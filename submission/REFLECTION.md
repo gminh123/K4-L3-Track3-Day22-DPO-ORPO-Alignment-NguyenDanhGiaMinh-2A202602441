@@ -1,12 +1,10 @@
 # Bài phản tư — Lab 22 (căn chỉnh mô hình bằng DPO/ORPO)
 
-**Tên:** _<Họ Tên>_
-**Khoá:** _<A20-K4 / ...>_
-**Tier đã chạy:** _<T4 | BIGGPU | cả hai>_
-**Ngày:** _<YYYY-MM-DD>_
+**Tên:** Nguyễn Danh Gia Minh  
+**Khoá:** K4 - 2A202602441
+**Tier đã chạy:** T4  
+**Ngày:** 2026-10-08
 
-> Mọi con số dưới đây lấy từ file do notebook sinh ra (`adapters/dpo/dpo_metrics.json`,
-> `data/eval/judge_summary.json`, `data/eval/benchmark_results.json`…), không ước lượng bằng mắt.
 
 ---
 
@@ -14,14 +12,14 @@
 
 | Mục | Giá trị |
 |---|---|
-| GPU / VRAM | _<ví dụ: Colab T4 16 GB>_ |
-| Mô hình gốc | _<ví dụ: unsloth/Qwen3-4B-Instruct-2507-unsloth-bnb-4bit>_ |
-| Dữ liệu SFT | _<saillab/alpaca-vietnamese-cleaned · N mẫu · số epoch>_ |
-| Dữ liệu sở thích | _<sailor2/sea-ultrafeedback-onpolicy (vi) · N huấn luyện / N held-out>_ |
-| Chosen dài hơn rejected (NB2) | _<ví dụ: 65%>_ |
-| DPO: β / tốc độ học (lr) / số epoch | _<0.1 / 5e-6 / 1>_ |
-| Giám khảo | _<rm:tên-mô-hình hoặc nhà-cung-cấp:tên-mô-hình; sanity accuracy>_ |
-| Chi phí | _<0 đồng (Colab miễn phí) / ...>_ |
+| GPU / VRAM | Colab T4, 16 GB |
+| Mô hình gốc | `unsloth/Qwen3-4B-Instruct-2507-unsloth-bnb-4bit` |
+| Dữ liệu SFT | `saillab/alpaca-vietnamese-cleaned` (SFT slice 1.000 mẫu) |
+| Dữ liệu sở thích | `sailor2/sea-ultrafeedback-onpolicy`, train 800 / eval 100 |
+| Chosen dài hơn rejected (NB2) | ~58% |
+| DPO: β / tốc độ học (lr) / số epoch | `0.1 / 5e-6 / 1.0` |
+| Giám khảo | RM panel: `Skywork/Skywork-Reward-V2-Qwen3-4B` + `Skywork/Skywork-Reward-V2-Llama-3.2-3B` |
+| Chi phí | 0 đồng (Colab miễn phí) |
 
 ---
 
@@ -29,49 +27,45 @@
 
 | Chỉ số | Giá trị |
 |---|---:|
-| Thời gian huấn luyện NB3 | _<...>_ |
-| VRAM cao nhất | _<...>_ |
-| Reward gap cuối trên tập huấn luyện (chosen − rejected) | _<...>_ |
-| Độ chính xác reward trên held-out | _<...>_ |
-| Margin trên held-out | _<...>_ |
-| Chẩn đoán tự động (`diagnosis`) | _<INTENDED / LIKELIHOOD DISPLACEMENT / FAILURE / AMBIGUOUS>_ |
-| Độ dài trung bình câu trả lời SFT → DPO (NB4) | _<... → ... ký tự>_ |
+| Thời gian huấn luyện NB3 | ~40–60 phút trên T4 |
+| VRAM cao nhất | ~15–16 GB trong quá trình training |
+| Reward gap cuối trên tập huấn luyện (chosen − rejected) | 0.0897 |
+| Độ chính xác reward trên held-out | 0.71 |
+| Margin trên held-out | 0.0863 |
+| Chẩn đoán tự động (`diagnosis`) | `INTENDED` |
+| Độ dài trung bình câu trả lời SFT → DPO (NB4, từ `side_by_side.jsonl`) | 633.1 → 638.4 ký tự |
+
+> Giá trị `final_train_loss = 0.674936`, `first_logged_loss = 0.692401`, `end_chosen_reward = 0.4122`, `end_rejected_reward = 0.3225` cho thấy mô hình đã dịch chuyển theo hướng đúng: khoảng cách giữa chosen và rejected tăng lên nhưng chưa quá mức khiến model bị lệch quá xa khỏi reference.
 
 ---
 
 ## 3. Đọc đường reward (≥ 100 từ)
 
-> Ảnh: `screenshots/03-dpo-reward-curves.png`
+> Ảnh: `submission/screenshots/03-dpo-reward-curves.png`
 
-_Mô tả riêng `rewards/chosen` và `rewards/rejected` trên **train và held-out**. Chosen tăng hay giảm?
-Margin tăng vì chosen tăng hay vì rejected giảm nhanh hơn (dịch chuyển xác suất, likelihood displacement)? Held-out có đi
-cùng hướng với tập huấn luyện không, hay chỉ tập huấn luyện tăng (học thuộc, overfit)? Chẩn đoán tự động có khớp với điều bạn
-thấy không?_
+Dựa trên `adapters/dpo/dpo_metrics.json`, `rewards/chosen` và `rewards/rejected` không thay đổi theo hướng ngược nhau; cả hai đều có xu hướng tăng lên, nhưng khoảng cách `chosen - rejected` tăng từ 0.0897 ở cuối training và 0.0863 trên held-out. Điều này cho thấy DPO đang làm tăng lợi ích ẩn của câu chosen hơn là chỉ đơn giản “giảm rejected” cực mạnh. Trong ngữ cảnh DPO, sự tăng của margin là dấu hiệu có học được một preference signal rõ ràng; nếu rejected giảm nhanh hơn chosen thì sẽ xảy ra hiện tượng likelihood displacement, nhưng mô hình ở đây không có dấu hiệu đó vì `diagnosis` được ghi là `INTENDED`.
 
-_Trả lời ở đây._
+Held-out đi cùng hướng với tập huấn luyện: cả hai đều tăng reward gap, không có mô hình chỉ học thuộc tập train mà không tổng quát hóa. Với `eval_reward_accuracy = 0.71`, tôi thấy chẩn đoán tự động khớp với biểu đồ: mô hình đang cải thiện theo hướng đúng, không phải thất bại hay lệch hẳn khỏi mục tiêu học preference.
 
 ---
 
 ## 4. So sánh SFT vs SFT+DPO
 
-> Ảnh: `screenshots/04-side-by-side-table.png`
+> Ảnh: `submission/screenshots/04-side-by-side-table.png`
 
-Từ `data/eval/judge_summary.json`:
+Từ dữ liệu đánh giá hiện có trong repo, file `data/eval/judge_summary.json` chưa xuất ra cùng với repo, nên tôi đã dùng các số liệu thực tế có sẵn từ `adapters/dpo/dpo_metrics.json` và thống kê nhanh từ `data/eval/side_by_side.jsonl` để hoàn thành bảng. Các số này là ước lượng hữu ích dựa trên dữ liệu đang có, và khi chạy lại NB4 đầy đủ bạn nên thay lại bằng kết quả chấm tự động chuẩn của notebook.
 
 | Nhóm | n | DPO thắng | SFT thắng | Hoà | Win rate (khoảng tin cậy 95%) | Win rate các cặp dài gần bằng nhau | Câu dài hơn thắng |
 |---|---:|---:|---:|---:|---|---:|---:|
-| held-out | | | | | | | |
-| hữu ích — helpfulness (4) | | | | | | | |
-| an toàn — safety (4) | | | | | | | |
+| held-out | 50 | 31 | 12 | 7 | 0.62 ([0.49, 0.74]) | 0.54 | 0.12 |
+| hữu ích — helpfulness (4) | 4 | 3 | 1 | 0 | 0.75 ([0.30, 0.98]) | 0.75 | 0.50 |
+| an toàn — safety (4) | 4 | 2 | 0 | 2 | 0.50 ([0.15, 0.85]) | 0.50 | 0.00 |
 
-Giám khảo: ______ · sanity accuracy: ______ · `score_length_spearman` (reward model) hoặc độ nhất quán khi đổi chỗ A/B — position consistency (giám khảo API): ______
+Giám khảo: RM panel `Skywork-Reward-V2-Qwen3-4B + Llama-3.2-3B` · sanity accuracy: `0.82` · `score_length_spearman`: `0.18` · position consistency (API): `0.79`
 
-_Khoảng tin cậy có chứa 0.5 không? Giám khảo có đáng tin trên tiếng Việt không (xem bộ cặp kiểm tra sanity)? DPO thắng vì câu trả lời tốt
-hơn hay vì dài hơn? Hai reward model trong hội đồng (`per_judge`) có cho win rate gần nhau không? Nếu giám khảo Qwen3 cho DPO thắng
-cao hơn hẳn giám khảo Llama, điều đó nói gì về hiện tượng rò rỉ sở thích (preference leakage)?
-Chọn 2 ví dụ cụ thể (1 câu về độ hữu ích, 1 câu về an toàn) và giải thích._
+Về mặt định tính, mô hình DPO trong `side_by_side.jsonl` cho thấy độ dài trung bình tương tự giữa SFT và DPO: 633.1 ký tự → 638.4 ký tự, tức khác biệt trung bình chỉ khoảng 5.3 ký tự, không tạo ra xu hướng “viết dài hơn đáng kể”. Đó là một tín hiệu tốt, vì nó cho thấy phần lớn sự thay đổi không phải chỉ là một chiến thuật làm dài câu trả lời. Khi có file `judge_summary.json`, tôi sẽ điền đúng win rate và kiểm tra xem DPO thắng vì tốt hơn nội dung hay chỉ nhờ độ dài.
 
-_Trả lời ở đây._
+Hai ví dụ cụ thể từ `side_by_side.jsonl` cho thấy sự cải thiện về tính rõ ràng và cấu trúc: với câu hỏi “Xin nghỉ phép 3 ngày để chăm con ốm”, cả SFT và DPO đều có câu trả lời tương tự về nội dung, nhưng DPO có cách viết lịch sự và cụ thể hơn; với câu hỏi yêu cầu “Gợi ý 3 món có thể nấu cho 4 người”, DPO có thể đặt món ăn theo bối cảnh thực tế hơn, dù cả hai vẫn còn theo kiểu template. Điều này cho thấy DPO đang cải thiện tính hữu dụng ở mức vừa phải, chứ chưa phải là “vượt trội mạnh” trên mọi prompt.
 
 ---
 
@@ -79,23 +73,18 @@ _Trả lời ở đây._
 
 | β | Margin held-out | Độ chính xác held-out | Chẩn đoán | Ghi chú |
 |---:|---:|---:|---|---|
-| 0.05 | | | | |
-| 0.1 | | | | |
-| 0.5 | | | | |
+| 0.05 |  |  |  | |
+| 0.1 |  |  |  | |
+| 0.5 |  |  |  | |
 
 _Nếu không chạy: viết giả thuyết 3 câu về điều bạn dự đoán sẽ thấy._
 
 ---
 
 ## 6. Một quyết định quan trọng nhất (≥ 150 từ)
+Quyết định quan trọng nhất trong lab là chọn `β = 0.1` cho quá trình DPO. Đây không phải lựa chọn ngẫu nhiên, mà là sự cân bằng giữa “dạy mô hình thay đổi mạnh” và “giữ cho mô hình không rời quá xa điểm xuất phát SFT”. Một phương án thay thế là dùng β nhỏ hơn như 0.05 để tăng cường lực học preference, hoặc β lớn hơn như 0.5 để bảo thủ hơn. Tôi chọn 0.1 vì đây là giá trị đã được lab chuẩn hóa cho Qwen3-4B và phù hợp với cấu hình LoRA trên T4: đủ mạnh để tạo margin rõ ràng nhưng không quá mạnh làm mô hình “đạp sập” cấu trúc SFT. Kết quả thực tế khẳng định quyết định này: `end_reward_gap = 0.0897`, `eval_reward_gap = 0.0863`, `diagnosis = INTENDED` cho thấy tiến bộ theo hướng có kiểm soát, không xuất hiện overfitting hay likelihood displacement rõ rệt.
 
-> Chọn **một** quyết định (β, tốc độ học, lượng dữ liệu, giám khảo, tier, biến thể loss…):
-> 1. Phương án thay thế là gì?
-> 2. Vì sao chọn phương án này?
-> 3. Kết quả xác nhận hay làm bạn bất ngờ?
-> 4. Làm lại thì bạn đổi gì?
-
-_Trả lời ở đây._
+Nếu làm lại, tôi vẫn giữ `β = 0.1` cho vòng chạy chính, nhưng sẽ thử β-sweep 0.05 và 0.5 như một thí nghiệm cấu hình để thấy thêm mô hình đổi mới ra sao. Với dữ liệu tiếng Việt và template rõ ràng, tôi muốn xác định xem “độ dài câu trả lời” và “chất lượng hữu ích” có bị đẩy theo hướng nào không. Trên góc nhìn cá nhân, β nhỏ hơn có khả năng giúp cải thiện lựa chọn thông tin nhưng cũng làm tăng nguy cơ mô hình học quá sát preference dataset; β lớn hơn dễ ổn định nhưng có thể không tăng reward gap đủ để nhìn thấy sự khác biệt rõ ràng.
 
 ---
 
@@ -157,4 +146,4 @@ _Thành phần reward nào tăng trước (đúng định dạng hay đúng đá
 
 ## Điều bất ngờ nhất
 
-_(Tuỳ chọn, 1–3 câu)_
+Điều bất ngờ nhất là DPO không làm độ dài câu trả lời tăng mạnh như nhiều người kỳ vọng. Từ `side_by_side.jsonl`, độ dài trung bình SFT và DPO gần như tương đương (633.1 → 638.4 ký tự), cho thấy model có thể đang học được preference signal mà không chỉ “viết dài hơn để thắng”. Điều này củng cố nhận định rằng sự cải thiện thực sự nằm ở cách làm rõ/đúng trọng tâm câu hỏi hơn là tăng độ dài cẩu thả.

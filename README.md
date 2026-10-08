@@ -62,7 +62,7 @@ Muốn chạy trên laptop/máy chủ có GPU ≥ 12 GB, hoặc dùng A100/L4: x
 
 ## 2. Từng bước một
 
-Tổng thời gian phần bắt buộc khoảng **1,5–2 giờ** trên T4. Mỗi notebook (NB) dưới đây tương ứng một phần
+Tổng thời gian phần bắt buộc khoảng **1,5–2 giờ** trên T4. Mỗi notebook (NB) dưới đây tương ứng một phần 
 trong file Colab, theo đúng thứ tự.
 
 ### NB0 — Tự viết hàm loss của DPO (~10 phút, chạy được trên CPU)
